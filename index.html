@@ -173,17 +173,11 @@
   <div class="logo">SK</div>
   <div>
     <h1>SKOL Rwanda &mdash; Payroll Calculator</h1>
-    <p>Forward calculation &amp; reverse SALBASE solver</p>
+    <p>Reverse NET SAL &rarr; SALBASE solver</p>
   </div>
 </header>
 
 <div class="page">
-
-  <!-- mode toggle -->
-  <div class="mode-bar">
-    <button class="mode-btn active" id="btnForward" onclick="setMode('forward')">Forward &mdash; SALBASE &rarr; NET SAL</button>
-    <button class="mode-btn"        id="btnReverse" onclick="setMode('reverse')">Reverse &mdash; NET SAL &rarr; SALBASE</button>
-  </div>
 
   <!-- primary input card -->
   <div class="card">
@@ -330,23 +324,11 @@
 
 <script>
 // ─── Mode ───────────────────────────────────────────────────────────────────
-let mode = 'forward';
+const mode = 'reverse';
 
-function setMode(m) {
-  mode = m;
-  document.getElementById('btnForward').classList.toggle('active', m === 'forward');
-  document.getElementById('btnReverse').classList.toggle('active', m === 'reverse');
-  if (m === 'forward') {
-    document.getElementById('primaryLabel').textContent = 'Base Salary';
-    document.getElementById('primaryFieldLabel').textContent = 'SALBASE (RWF)';
-    document.getElementById('salbase').placeholder = 'e.g. 300000';
-  } else {
-    document.getElementById('primaryLabel').textContent = 'Target NET SAL';
-    document.getElementById('primaryFieldLabel').textContent = 'Target NET SAL (RWF)';
-    document.getElementById('salbase').placeholder = 'e.g. 200000';
-  }
-  hideResults();
-}
+document.getElementById('primaryLabel').textContent = 'Target NET SAL';
+document.getElementById('primaryFieldLabel').textContent = 'Target NET SAL (RWF)';
+document.getElementById('salbase').placeholder = 'e.g. 200000';
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 function toggleLoan(active) {
@@ -560,14 +542,9 @@ function onCalculate() {
   }
 
   try {
-    if (mode === 'forward') {
-      const r = calculate(primaryVal, opts);
-      renderResults(primaryVal, r, opts);
-    } else {
       const salbase = reverseCalc(primaryVal, opts);
       const r       = calculate(salbase, opts);
       renderResults(salbase, r, opts);
-    }
   } catch (err) {
     showError(typeof err === 'string' ? err : err.message);
   }
