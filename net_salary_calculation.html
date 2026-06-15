@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Net Salary Calculation — Documentation</title>
+  <style>
+    :root{--bg:#f7f9fc;--card:#ffffff;--accent:#1a3a8f;--muted:#667085;--mono:Menlo, Monaco, monospace}
+    body{font-family:Inter, system-ui, Arial, sans-serif;margin:0;background:var(--bg);color:#0b1330}
+    header{background:linear-gradient(135deg,var(--accent),#2756cc);color:#fff;padding:20px}
+    .page{max-width:980px;margin:20px auto;padding:18px}
+    .card{background:var(--card);border-radius:12px;padding:18px;margin-bottom:14px;box-shadow:0 6px 20px rgba(10,20,60,.06)}
+    h1{margin:0;font-size:1.2rem}
+    h2{font-size:1rem;margin:0 0 8px}
+    p{color:var(--muted);line-height:1.5}
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
+    .pseudo-list{background:#111827;color:#f8fafc;border-radius:10px;padding:14px;line-height:1.65;font-family:var(--mono);font-size:.92rem;overflow:hidden}
+    .pseudo-line{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;transition:background .18s}
+    .pseudo-line:last-child{border-bottom:none}
+    .pseudo-line:hover{background:rgba(255,255,255,.05)}
+    .pseudo-line.active{background:rgba(59,130,246,.16)}
+    .pseudo-code{white-space:pre-wrap;flex:1;min-width:0}
+    .pseudo-badge{margin-left:12px;flex-shrink:0;background:rgba(255,255,255,.08);color:#cbd5e1;border-radius:999px;padding:4px 10px;font-size:.76rem;align-self:center}
+    .explanation-panel{margin-top:16px;padding:14px;background:#eef2ff;border-radius:10px;border:1px solid #dbeafe}
+    .explanation-panel h3{margin:0 0 8px;font-size:.98rem}
+    .explanation-panel p{margin:0 0 10px;color:#475569}
+    .explanation-panel button{margin-top:8px}
+    .function-root{margin-top:18px}
+    .function-root h3{margin:0 0 8px}
+    .function-root pre{margin:0;background:#f8fafc;color:#0f172a;padding:10px;border-radius:8px;overflow:auto}
+    .root-highlight{box-shadow:0 0 0 4px rgba(59,130,246,.25);}
+    pre{background:#0b1220;color:#e6eef8;padding:12px;border-radius:8px;overflow:auto;font-family:var(--mono);font-size:.86rem}
+
+    /* interactive demo */
+    label{display:block;font-weight:700;margin-bottom:6px}
+    input[type=number]{width:100%;padding:8px;border:1px solid #e6e9ef;border-radius:8px}
+    button{background:var(--accent);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer}
+    .muted{color:var(--muted);font-size:.92rem}
+
+    @media (max-width:880px){.grid{grid-template-columns:1fr}}
+
+    /* insurance table */
+    .ins-table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px}
+    .ins-table th{background:#1a3a8f;color:#fff;padding:6px 10px;text-align:left}
+    .ins-table td{padding:6px 10px;border-bottom:1px solid #e6e9ef}
+    .ins-table tr:last-child td{border-bottom:none}
+    .ins-table tr:nth-child(even) td{background:#f7f9fc}
+
+    /* employer cost callout */
+    .callout-warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:.88rem;color:#7c2d12}
+    .callout-warn strong{color:#9a3412}
+  </style>
+</head>
+<body>
+<header>
+  <div class="page">
+    <h1>Net Salary Calculation — Documentation</h1>
+    <p class="muted">A short, responsive explanation of how the calculator's forward and reverse logic was discovered and implemented.</p>
+  </div>
+</header>
+
+<main class="page">
+  <section class="card">
+    <h2>How we discovered the calculation</h2>
+    <p>The payroll calculation was reconstructed by inspecting payroll rules and iteratively validating them with sample payslips. Key observations:</p>
+    <ul class="muted">
+      <li><strong>LOGEMENT</strong> = 15% of SALBASE; <strong>TRANSPORT</strong> (cash) or <strong>TRANS NAT</strong> (in-kind) = 10% of SALBASE — exactly one is nonzero per employee. Cash transport enters BRUT; in-kind transport enters only the tax base (BTPR), not the employee's pocket.</li>
+      <li><strong>BRUT</strong> includes SALBASE, ANC (seniority), LOGEMENT, TRANSPORT, HOUSE KEEPING, HS (overtime), PRIMES, PRIMEFONCTION, and REGURALISATION — but never TRANS NAT or ASS MAL.</li>
+      <li><strong>Insurance</strong> has two independent dimensions: (1) split — G0–G2 default to 0%/100% (employer pays all), G3–G8 to 35%/65%; (2) premium base — 123,664 or 158,526 RWF, chosen per employee (not by grade). "Not insured" is always a valid option.</li>
+      <li><strong>Employer-only costs</strong> (RSSB 2.3%, PENSION P 6%, ASS 60) are <em>never</em> deducted from an employee's net salary — they are tracked separately for the company's remittance obligations.</li>
+      <li><strong>TPR</strong> is progressive on BTPR (0% → 10% → 20% → 30%). <strong>CBHI</strong> is 0.5% of BRUT after subtracting RSSB 0.3%, TPR, and PENSION E 6%. Both are employee deductions.</li>
+      <li><strong>Reverse solving</strong> (NET SAL → SALBASE) uses binary search because TPR brackets make the formula non-invertible algebraically; the forward function is monotonic, so 60–80 iterations converge to within 0.01 RWF.</li>
+    </ul>
+  </section>
+
+  <section class="card grid">
+    <div>
+      <h2>Formulas & reasoning</h2>
+      <p class="muted">Below are the main formulas used by the calculator. These come directly from the rules observed in the spec.</p>
+
+      <h3>Allowances and bases (computed in this order)</h3>
+      <pre>
+LOGEMENT  = SALBASE × 0.15
+TRANSPORT = SALBASE × 0.10  (only if transport type = "cash"; else 0)
+TRANS_NAT = SALBASE × 0.10  (only if transport type = "in-kind"; else 0)
+
+BRUT = SALBASE + ANC + LOGEMENT + TRANSPORT
+       + HOUSE_KEEPING + HS + PRIMES + PRIMEFONCTION + REGURALISATION
+       -- TRANS_NAT and ASS_MAL are NOT included in BRUT
+
+BCSR = BRUT − TRANSPORT          (social-security taxable base)
+BTPR = BRUT + TRANS_NAT + ASS_MAL (tax / pension base)
+       -- identity: BTPR = BCSR + 0.10×SALBASE + ASS_MAL
+      </pre>
+
+      <h3>Insurance (ASS 40 / ASS 60)</h3>
+      <table class="ins-table">
+        <thead><tr><th>Split</th><th>Premium base</th><th>ASS 40 (employee ded.)</th><th>ASS 60 = ASS MAL (employer)</th></tr></thead>
+        <tbody>
+          <tr><td>0 / 100</td><td>123,664</td><td>0</td><td>123,664</td></tr>
+          <tr><td>0 / 100</td><td>158,526</td><td>0</td><td>158,526</td></tr>
+          <tr><td>35 / 65</td><td>123,664</td><td>43,282</td><td>80,382</td></tr>
+          <tr><td>35 / 65</td><td>158,526</td><td>55,484</td><td>103,042</td></tr>
+          <tr><td>not insured</td><td>—</td><td>0</td><td>0</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Contributions and taxes (employee deductions)</h3>
+      <pre>
+RSSB_employee  = BCSR × 0.003
+TPR            = progressiveTax(BTPR)   -- see brackets below
+PENSION_E      = BTPR × 0.06
+CBHI           = (BRUT − RSSB_employee − TPR − PENSION_E) × 0.005
+      </pre>
+      <div class="callout-warn">
+        <strong>Employer-only costs — never deducted from NET SAL:</strong><br>
+        RSSB employer = BCSR × 0.023 &nbsp;|&nbsp; PENSION P = BTPR × 0.06 &nbsp;|&nbsp; ASS 60 (= ASS MAL)<br>
+        Total employer cost = BTPR × 1.06 + BCSR × 0.023
+      </div>
+
+      <h3>Net salary</h3>
+      <pre>
+NET SAL = BRUT
+        − RSSB_employee   (0.3% of BCSR)
+        − TPR             (progressive, on BTPR)
+        − CBHI            (0.5% of reduced base)
+        − PENSION_E       (6% of BTPR)
+        − ASS_40          (employee insurance share)
+        − RESTAURANT      (450 RWF × canteen days)
+        − PRET_VEHICULE   (car loan installment)
+        − RBST_SFAR       (8% × (SALBASE+TRANSPORT+LOGEMENT) if loan active)
+        − AUTRES_AVANCES
+      </pre>
+
+      <h3>Reverse (solving NET SAL → SALBASE)</h3>
+      <pre>
+f(SALBASE) → NET_SAL is monotonically increasing.
+Binary search over [0, 50,000,000]:
+  60–80 iterations → precision &lt; 0.01 RWF.
+      </pre>
+    </div>
+
+    <aside>
+      <h2>Interactive demo</h2>
+      <div class="muted">Try either a forward or reverse calculation.</div>
+      <div style="margin-top:10px">
+        <label>SALBASE (forward)</label>
+        <input id="docSalbase" type="number" value="300000">
+        <label style="margin-top:8px">Target NET SAL (reverse)</label>
+        <input id="docTargetNet" type="number" value="200000">
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button id="btnForward">Forward</button>
+          <button id="btnReverse">Reverse</button>
+        </div>
+        <div id="docResult" style="margin-top:12px;padding:8px;background:#f3f6ff;border-radius:8px"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="card">
+    <h2>Pseudocode: Forward Calculation</h2>
+    <p class="muted">This is how the calculator moves from SALBASE → NET SAL step by step. Click any line to see a detailed explanation.</p>
+    <div class="pseudo-list" id="forwardPseudo"></div>
+    <div class="explanation-panel" id="forwardExplanation">
+      <h3 id="forwardTitle">Click a line to explain it</h3>
+      <p id="forwardText">Each formula line is clickable. A clicked line will show what it means, why it exists, and an example calculation.</p>
+      <button id="forwardCopy" type="button">Copy formula</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Pseudocode: Reverse Calculation (NET SAL → SALBASE)</h2>
+    <p class="muted">How we solve backwards: finding the SALBASE that produces a target NET SAL. Click any line for details.</p>
+    <div class="pseudo-list" id="reversePseudo"></div>
+    <div class="explanation-panel" id="reverseExplanation">
+      <h3 id="reverseTitle">Click a line to explain it</h3>
+      <p id="reverseText">Each line here shows the search process and why it is safe to use binary search in this payroll model.</p>
+      <button id="reverseCopy" type="button">Copy formula</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Key implementation (JavaScript)</h2>
+    <p class="muted">This is the core logic used — simplified from the working calculator. It is intentionally small so you can read and reuse it.</p>
+    <pre id="codeBlock">// See the JavaScript implementation embedded in this page.</pre>
+  </section>
+
+  <section class="card">
+    <h2>Function roots</h2>
+    <p class="muted">Click a function name in the pseudocode above to jump directly to its detailed definition below.</p>
+    <div class="function-root">
+      <h3 id="insuranceCalc">insuranceCalc(split, base)</h3>
+      <p>Returns <code>[ASS_40, ASS_60]</code> — the employee and employer insurance shares. <strong>Split defaults by grade:</strong> G0–G2 → "0/100" (employer pays all); G3–G8 → "35/65". <strong>Premium base</strong> is per-employee enrollment (123,664 = individual; 158,526 = family/dependents) — not grade-locked. "none" = not insured = [0, 0].</p>
+      <pre>// split: '0/100' | '35/65' | 'none'
+// base:  123664  | 158526
+[ASS_40, ASS_60] = insuranceCalc(split, base)
+
+// Results:
+// '0/100' + 123664 → [0,       123664]
+// '0/100' + 158526 → [0,       158526]
+// '35/65' + 123664 → [43282,    80382]
+// '35/65' + 158526 → [55484,   103042]
+// 'none'           → [0,            0]</pre>
+    </div>
+    <div class="function-root">
+      <h3 id="tprCalc">tprCalc(btpr)</h3>
+      <p>Progressive income tax on BTPR (col X). Applied to both employee and employer pension base.</p>
+      <pre>btpr ≤  60,000  →  TPR = 0
+btpr ≤ 100,000  →  TPR = (btpr − 60,000) × 0.10
+btpr ≤ 200,000  →  TPR = 4,000 + (btpr − 100,000) × 0.20
+btpr >  200,000 →  TPR = 24,000 + (btpr − 200,000) × 0.30</pre>
+    </div>
+    <div class="function-root">
+      <h3 id="calculate">calculate(salbase, opts)</h3>
+      <p>Main payroll engine. Accepts SALBASE and optional inputs (ANC, transportType, insBase, split, loan flags, deductions). Returns an object with netSal, brut, btpr, bcsr, rssbE, tprVal, pensionE, cbhi, ass40, ass60, rbstSfar.</p>
+      <pre>result = calculate(SALBASE, {
+  transportType: 'cash' | 'in-kind',  // default 'cash'
+  insBase: 123664 | 158526,
+  split: '0/100' | '35/65' | 'none',
+  loanActive: true | false,
+  anc, houseKeeping, hs, primes,
+  primefonction, reguralisation,
+  restaurant, pretVehicule,
+  rbstSfarManual, autresAvances
+})</pre>
+    </div>
+    <div class="function-root">
+      <h3 id="reverseCalc">reverseCalc(targetNet, opts)</h3>
+      <p>Binary search over SALBASE ∈ [0, 50,000,000]. Calls <code>calculate()</code> up to 80 times. Throws if target is below the minimum or above the maximum achievable net salary. Converges to within 0.01 RWF.</p>
+      <pre>salbase = reverseCalc(targetNet, opts)
+// same opts as calculate() — all deductions must be
+// set correctly so the forward function matches reality</pre>
+    </div>
+  </section>
+</main>
+
+<script>
+// Core functions (simplified, matching the calculator in the repo)
+function tprCalc(btpr){
+  if(btpr <= 60000) return 0;
+  if(btpr <= 100000) return (btpr - 60000) * 0.10;
+  if(btpr <= 200000) return 4000 + (btpr - 100000) * 0.20;
+  return 24000 + (btpr - 200000) * 0.30;
+}
+function insuranceCalc(split, base){
+  if(split === 'none') return [0,0];
+  if(split === '0/100') return [0, base];
+  return [base * 0.35, base * 0.65];
+}
+
+function calculate(salbase, opts){
+  const anc = opts.anc || 0;
+  const transportType = opts.transportType || 'cash';
+  const houseKeeping = opts.houseKeeping || 0;
+  const hs = opts.hs || 0;
+  const primes = opts.primes || 0;
+  const primefonction = opts.primefonction || 0;
+  const reguralisation = opts.reguralisation || 0;
+  const restaurant = opts.restaurant || 0;
+  const pretVehicule = opts.pretVehicule || 0;
+  const rbstSfarManual = opts.rbstSfarManual || 0;
+  const loanActive = !!opts.loanActive;
+  const autresAvances = opts.autresAvances || 0;
+  const insBase = opts.insBase || 0;
+  const split = opts.split || '0/100';
+
+  const logement = salbase * 0.15;
+  const transport = transportType === 'cash' ? salbase * 0.10 : 0;
+  const transNat = transportType === 'in-kind' ? salbase * 0.10 : 0;
+  const brut = salbase + anc + logement + transport + houseKeeping + hs + primes + primefonction + reguralisation;
+  const bcsr = brut - transport;
+  const [ass40, ass60] = insuranceCalc(split, insBase);
+  const assMal = ass60;
+  const btpr = brut + transNat + assMal;
+
+  const rssbE = bcsr * 0.003;
+  const tprVal = tprCalc(btpr);
+  const pensionE = btpr * 0.06;
+  const cbhi = (brut - rssbE - tprVal - pensionE) * 0.005;
+  const rbstSfar = loanActive ? (salbase + transport + logement) * 0.08 : rbstSfarManual;
+
+  const netSal = brut - rssbE - tprVal - cbhi - pensionE - ass40 - restaurant - pretVehicule - rbstSfar - autresAvances;
+  return {netSal, brut, btpr, rssbE, tprVal, pensionE, cbhi, ass40, ass60, rbstSfar};
+}
+
+function reverseCalc(targetNet, opts){
+  let lo = 0, hi = 50_000_000;
+  const net = s => calculate(s, opts).netSal;
+  // basic bounds check
+  const netLo = net(lo), netHi = net(hi);
+  if(targetNet < netLo) throw `Target ${targetNet} below minimum ${netLo}`;
+  if(targetNet > netHi) throw `Target ${targetNet} above maximum ${netHi}`;
+  let mid=0;
+  for(let i=0;i<80;i++){
+    mid=(lo+hi)/2;
+    const nm = net(mid);
+    if(Math.abs(nm-targetNet) < 0.01) break;
+    if(nm < targetNet) lo = mid; else hi = mid;
+  }
+  return mid;
+}
+
+// Demo bindings
+const resultEl = document.getElementById('docResult');
+function fmt(v){return Math.round(v).toLocaleString();}
+
+document.getElementById('btnForward').addEventListener('click', ()=>{
+  const s = Number(document.getElementById('docSalbase').value)||0;
+  const r = calculate(s, {insBase:123664, split:'0/100'});
+  resultEl.innerHTML = [
+    `<strong>NET SAL:</strong> ${fmt(r.netSal)} RWF`,
+    `<span class="muted">BRUT: ${fmt(r.brut)} RWF</span>`,
+    `<span class="muted">BTPR: ${fmt(r.btpr)} RWF</span>`,
+    `<span class="muted">TPR: ${fmt(r.tprVal)} RWF &nbsp;|&nbsp; PENSION E: ${fmt(r.pensionE)} RWF</span>`,
+    `<span class="muted">RSSB 0.3%: ${fmt(r.rssbE)} RWF &nbsp;|&nbsp; CBHI: ${fmt(r.cbhi)} RWF</span>`,
+    `<span class="muted">ASS 40 (emp.): ${fmt(r.ass40)} RWF &nbsp;|&nbsp; ASS 60 (empr.): ${fmt(r.ass60)} RWF</span>`,
+  ].join('<br>');
+});
+
+document.getElementById('btnReverse').addEventListener('click', ()=>{
+  const t = Number(document.getElementById('docTargetNet').value)||0;
+  try{
+    const s = reverseCalc(t, {insBase:123664, split:'0/100'});
+    const r = calculate(s, {insBase:123664, split:'0/100'});
+    resultEl.innerHTML = `<strong>SALBASE →</strong> ${fmt(s)} RWF<br><strong>NET SAL:</strong> ${fmt(r.netSal)} RWF`;
+  }catch(e){ resultEl.textContent = String(e); }
+});
+
+// show code snippet in page
+const codeBlock = document.getElementById('codeBlock');
+codeBlock.textContent = `${tprCalc.toString()}\n\n${insuranceCalc.toString()}\n\n${calculate.toString()}\n\n${reverseCalc.toString()}`;
+
+function goToRoot(targetId) {
+  const target = document.getElementById(targetId);
+  if (!target) return false;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.classList.add('root-highlight');
+  setTimeout(() => target.classList.remove('root-highlight'), 1400);
+  return true;
+}
+
+const forwardLines = [
+  { code: 'LOGEMENT = SALBASE × 0.15', title: 'Housing allowance', text: 'This computes the housing allowance as 15% of SALBASE. Example: if SALBASE is 300,000, then LOGEMENT is 45,000.', formula: 'LOGEMENT = SALBASE × 0.15' },
+  { code: 'TRANSPORT = (transport_type == "cash") ? SALBASE × 0.10 : 0', title: 'Cash transport allowance (col L)', text: 'Exactly one of TRANSPORT or TRANS_NAT is nonzero per employee — always 10% of SALBASE. TRANSPORT (cash) is included in BRUT and received by the employee. It is excluded from BCSR (the RSSB base) because transport cash is not subject to social security.', formula: 'TRANSPORT = (transport_type == "cash") ? SALBASE × 0.10 : 0' },
+  { code: 'TRANS_NAT = (transport_type == "in-kind") ? SALBASE × 0.10 : 0', title: 'In-kind transport benefit (col M)', text: 'When transport is provided in-kind (a company vehicle or bus), TRANS_NAT records the benefit value (10% of SALBASE) but it is NOT paid in cash and NOT included in BRUT. It is added to BTPR, so it raises TPR and PENSION E even though the employee never receives this amount as money.', formula: 'TRANS_NAT = (transport_type == "in-kind") ? SALBASE × 0.10 : 0' },
+  { code: 'BRUT = SALBASE + ANC + LOGEMENT + TRANSPORT\n       + HOUSE_KEEPING + HS + PRIMES\n       + PRIMEFONCTION + REGURALISATION', title: 'Gross salary (col T)', text: 'BRUT is the full cash gross. TRANS_NAT and ASS_MAL are deliberately excluded — they affect the tax base (BTPR) but are not cash components of gross pay. REGURALISATION appears for about 90% of employees every month and functions more like a recurring component than a true one-off correction.', formula: 'BRUT = SALBASE + ANC + LOGEMENT + TRANSPORT + HOUSE_KEEPING + HS + PRIMES + PRIMEFONCTION + REGURALISATION' },
+  { code: 'BCSR = BRUT − TRANSPORT  (col U)', title: 'Social security base (BCSR)', text: 'BCSR is BRUT minus cash transport. It is the base for both the employee (0.3%) and employer (2.3%) RSSB contributions. Transport cash is excluded because it is a reimbursement component and is not subject to social security.', formula: 'BCSR = BRUT − TRANSPORT' },
+  { code: '[ASS_40, ASS_60] = insuranceCalc(split, insurance_base)', title: 'Insurance split calculation (cols AC / AD)', text: 'Grade-based defaults: G0–G2 → 0%/100% (employer pays all); G3–G8 → 35%/65%. Premium bases are 123,664 or 158,526 RWF, chosen per employee (individual vs. family coverage) — not derived from grade. "Not insured" is always valid. ASS_40 is deducted from the employee; ASS_60 (= ASS_MAL) is an employer cost only.', formula: '[ASS_40, ASS_60] = insuranceCalc(split, insurance_base)', target: 'insuranceCalc' },
+  { code: 'ASS_MAL = ASS_60  (col S, employer share only)', title: 'Employer insurance = ASS MAL', text: 'ASS_MAL is simply ASS_60 copied into column S. It is added to BTPR to raise the tax and pension base, reflecting that the employer\'s insurance payment is treated as a taxable benefit. It is never deducted from NET SAL.', formula: 'ASS_MAL = ASS_60' },
+  { code: 'BTPR = BRUT + TRANS_NAT + ASS_MAL  (col X)', title: 'Taxable payroll base (BTPR)', text: 'BTPR is the base for TPR (income tax) and both employee and employer pension contributions. It equals BCSR + 10% of SALBASE + ASS_MAL — always, because TRANSPORT + TRANS_NAT always equals 10% of SALBASE (one of the two is zero).', formula: 'BTPR = BRUT + TRANS_NAT + ASS_MAL' },
+  { code: 'RSSB_employee = BCSR × 0.003  (col V)', title: 'Employee social security (RSSB 0.3%)', text: 'The employee RSSB contribution is 0.3% of BCSR. The employer also pays 2.3% of BCSR (col W) but that amount is never deducted from the employee\'s net salary — it is an employer-only cost.', formula: 'RSSB_employee = BCSR × 0.003' },
+  { code: 'PENSION_employee = BTPR × 0.06  (col AA)', title: 'Employee pension (6% of BTPR)', text: 'The employee pension contribution is 6% of BTPR. The employer contributes another 6% of BTPR (col AB — PENSION P) but this is an employer-only cost and is never deducted from NET SAL.', formula: 'PENSION_employee = BTPR × 0.06' },
+  { code: 'TPR = progressive_tax(BTPR)  // col Y', title: 'Income tax — TPR (progressive on BTPR)', text: 'Tax brackets applied to BTPR: 0% on first 60,000 RWF; 10% on 60,001–100,000; 20% on 100,001–200,000; 30% above 200,000. Example: BTPR = 350,000 → TPR = 0 + 4,000 + 20,000 + 45,000 = 69,000 RWF.', formula: 'TPR = progressive_tax(BTPR)', target: 'tprCalc' },
+  { code: 'CBHI = (BRUT − RSSB_employee − TPR − PENSION_employee) × 0.005', title: 'Community health insurance (CBHI, col Z)', text: 'CBHI is 0.5% of BRUT after subtracting the three main deductions above (RSSB, TPR, PENSION E). This reduced base is the employee\'s effective income after major statutory deductions.', formula: 'CBHI = (BRUT − RSSB_employee − TPR − PENSION_employee) × 0.005' },
+  { code: 'RBST_SFAR = (loan_active) ? (SALBASE + TRANSPORT + LOGEMENT) × 0.08 : manual_rbst', title: 'Loan repayment — RBST SFAR (col AG)', text: 'When a BRD/SFAR loan is active, the monthly repayment is 8% of (SALBASE + TRANSPORT + LOGEMENT). This formula applies until the total loan amount is repaid. Otherwise a manually entered amount is used (or zero).', formula: 'RBST_SFAR = (loan_active) ? (SALBASE + TRANSPORT + LOGEMENT) × 0.08 : manual_rbst' },
+  { code: 'NET_SAL = BRUT\n          − RSSB_employee  (0.3% of BCSR)\n          − TPR            (progressive on BTPR)\n          − CBHI           (0.5% of reduced base)\n          − PENSION_E      (6% of BTPR)\n          − ASS_40         (employee ins. share)\n          − RESTAURANT     (450 × canteen days)\n          − PRET_VEHICULE  (car loan installment)\n          − RBST_SFAR      (8% loan repayment)\n          − AUTRES_AVANCES', title: 'Final net salary (col AI)', text: 'NET SAL is BRUT minus all employee-side deductions. Note that RSSB 2.3%, PENSION P 6%, and ASS 60 are employer costs and are never subtracted here. RESTAURANT is 450 RWF per canteen day used that month.', formula: 'NET_SAL = BRUT − RSSB_employee − TPR − CBHI − PENSION_E − ASS_40 − RESTAURANT − PRET_VEHICULE − RBST_SFAR − AUTRES_AVANCES' }
+];
+
+const reverseLines = [
+  { code: 'lo = 0', title: 'Lower bound', text: 'Start the search at SALBASE 0. The target net salary must be above the minimum achievable value at this bound.', formula: 'lo = 0' },
+  { code: 'hi = 50,000,000  (upper bound)', title: 'Upper bound', text: 'Set a high search limit for SALBASE. This should be large enough that the target net salary is achievable within this range.', formula: 'hi = 50000000' },
+  { code: 'net_lo = calculate(lo, options).NET_SAL', title: 'Minimum net salary', text: 'Compute the net salary at the lower bound so we can confirm the target is not too low.', formula: 'net_lo = calculate(lo, options).NET_SAL', target: 'calculate' },
+  { code: 'net_hi = calculate(hi, options).NET_SAL', title: 'Maximum net salary', text: 'Compute the net salary at the upper bound to ensure the target is not too high.', formula: 'net_hi = calculate(hi, options).NET_SAL', target: 'calculate' },
+  { code: 'IF target_net_sal < net_lo:\n    THROW Error("Target below achievable minimum")', title: 'Lower bound check', text: 'If the desired net salary is lower than the minimum possible value, there is no valid SALBASE to satisfy it.', formula: 'IF target_net_sal < net_lo THEN error' },
+  { code: 'IF target_net_sal > net_hi:\n    THROW Error("Target above achievable maximum")', title: 'Upper bound check', text: 'If the desired net salary exceeds the maximum possible value, the search cannot find a solution.', formula: 'IF target_net_sal > net_hi THEN error' },
+  { code: 'REPEAT 80 times:\n    mid = (lo + hi) / 2', title: 'Binary search iteration', text: 'Set the midpoint of the current range. This value is the candidate SALBASE for the next check.', formula: 'mid = (lo + hi) / 2' },
+  { code: 'net_mid = calculate(mid, options).NET_SAL', title: 'Evaluate candidate', text: 'Compute the net salary for the candidate SALBASE. The result tells us whether to raise or lower the search range.', formula: 'net_mid = calculate(mid, options).NET_SAL' },
+  { code: 'IF |net_mid − target_net_sal| < 0.01:\n      BREAK', title: 'Close enough', text: 'Stop the search once the net salary is within 0.01 of the target. This avoids unnecessary extra iterations.', formula: 'IF |net_mid − target_net_sal| < epsilon THEN done' },
+  { code: 'IF net_mid < target_net_sal:\n      lo = mid  (need higher SALBASE)\n    ELSE:\n      hi = mid  (need lower SALBASE)', title: 'Adjust range', text: 'If the candidate net salary is too low, raise the lower bound. If it is too high, lower the upper bound.', formula: 'IF net_mid < target_net_sal THEN lo=mid ELSE hi=mid' },
+  { code: 'RETURN mid  (the SALBASE that produces target NET SAL)', title: 'Return solution', text: 'After the loop converges, mid is the best SALBASE estimate that gives the target net salary.', formula: 'RETURN mid' }
+];
+
+function buildPseudoList(lines, containerId, explanationId, titleId, textId, copyId) {
+  const container = document.getElementById(containerId);
+  const explanation = document.getElementById(explanationId);
+  const title = document.getElementById(titleId);
+  const text = document.getElementById(textId);
+  const copyButton = document.getElementById(copyId);
+
+  function setActive(index) {
+    container.querySelectorAll('.pseudo-line').forEach((el, idx) => el.classList.toggle('active', idx === index));
+    title.textContent = lines[index].title;
+    text.textContent = lines[index].text;
+    copyButton.onclick = () => navigator.clipboard.writeText(lines[index].formula);
+  }
+
+  lines.forEach((item, index) => {
+    const line = document.createElement('div');
+    line.className = 'pseudo-line';
+    line.innerHTML = `<div class="pseudo-code">${item.code.replace(/\n/g, '<br>')}</div><span class="pseudo-badge">click</span>`;
+    line.addEventListener('click', () => {
+      setActive(index);
+      if (item.target) goToRoot(item.target);
+    });
+    container.appendChild(line);
+  });
+
+  if (lines.length > 0) setActive(0);
+}
+
+buildPseudoList(forwardLines, 'forwardPseudo', 'forwardExplanation', 'forwardTitle', 'forwardText', 'forwardCopy');
+buildPseudoList(reverseLines, 'reversePseudo', 'reverseExplanation', 'reverseTitle', 'reverseText', 'reverseCopy');
+
+</script>
+</body>
+</html>
