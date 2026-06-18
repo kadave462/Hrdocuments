@@ -259,6 +259,27 @@
 
     h2.sub { font-size: 1rem; font-weight: 700; margin: 1.25rem 0 .6rem; color: var(--cyan); }
     p.body  { font-size: .875rem; color: var(--muted); margin-bottom: .75rem; }
+
+    /* NAV SCROLLBAR */
+    .nav-scrollbar-wrap {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem 6px;
+    }
+    .nav-scrollbar-track {
+      height: 4px; border-radius: 999px;
+      background: var(--surface2);
+      cursor: pointer; position: relative;
+    }
+    .nav-scrollbar-thumb {
+      height: 4px; border-radius: 999px;
+      background: var(--blue);
+      position: absolute; top: 0; left: 0;
+      cursor: grab; transition: background .15s;
+      min-width: 32px;
+    }
+    .nav-scrollbar-thumb:hover  { background: var(--cyan); }
+    .nav-scrollbar-thumb:active { cursor: grabbing; background: var(--purple); }
   </style>
 </head>
 <body>
@@ -287,6 +308,11 @@
   <button class="phase-btn" data-phase="roles">🔐 Roles & Permissions</button>
   <button class="phase-btn" data-phase="reports">📊 Reports</button>
 </nav>
+<div class="nav-scrollbar-wrap">
+  <div class="nav-scrollbar-track" id="navTrack">
+    <div class="nav-scrollbar-thumb" id="navThumb"></div>
+  </div>
+</div>
 
 <main class="main">
 
@@ -1480,6 +1506,64 @@
       btn.classList.add('active');
       document.getElementById(phase).classList.add('active');
     });
+  });
+
+  // Convert vertical wheel scroll to horizontal on the nav bar
+  const nav = document.getElementById('phaseNav');
+  nav.addEventListener('wheel', (e) => {
+    if (e.deltaY !== 0) {
+      e.preventDefault();
+      nav.scrollLeft += e.deltaY;
+    }
+  }, { passive: false });
+
+  // Custom scrollbar thumb sync
+  const track = document.getElementById('navTrack');
+  const thumb = document.getElementById('navThumb');
+
+  function updateThumb() {
+    const scrollable = nav.scrollWidth - nav.clientWidth;
+    const ratio = nav.clientWidth / nav.scrollWidth;
+    const thumbW = Math.max(32, track.clientWidth * ratio);
+    const thumbLeft = scrollable > 0 ? (nav.scrollLeft / scrollable) * (track.clientWidth - thumbW) : 0;
+    thumb.style.width = thumbW + 'px';
+    thumb.style.left  = thumbLeft + 'px';
+  }
+
+  nav.addEventListener('scroll', updateThumb);
+  window.addEventListener('resize', updateThumb);
+  updateThumb();
+
+  // Drag thumb to scroll nav
+  let dragging = false, dragStartX = 0, dragStartScrollLeft = 0;
+
+  thumb.addEventListener('mousedown', (e) => {
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartScrollLeft = nav.scrollLeft;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const scrollable = nav.scrollWidth - nav.clientWidth;
+    const thumbW = thumb.offsetWidth;
+    const trackW = track.clientWidth;
+    const dx = e.clientX - dragStartX;
+    const ratio = scrollable / (trackW - thumbW);
+    nav.scrollLeft = dragStartScrollLeft + dx * ratio;
+  });
+
+  document.addEventListener('mouseup', () => { dragging = false; });
+
+  // Click on track to jump
+  track.addEventListener('click', (e) => {
+    if (e.target === thumb) return;
+    const rect = track.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const thumbW = thumb.offsetWidth;
+    const scrollable = nav.scrollWidth - nav.clientWidth;
+    nav.scrollLeft = ((clickX - thumbW / 2) / (rect.width - thumbW)) * scrollable;
   });
 
   // Accordion toggle
